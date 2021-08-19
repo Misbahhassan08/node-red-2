@@ -1,54 +1,90 @@
-FROM node:lts as build
+ARG OS=buster-slim
+ARG ARCH=amd64
+#--------------------------------------------------------------------------- Stage Base ----------------------------------------------------------------#
+FROM ${ARCH}/node:12-${OS} AS base
 
-RUN apt-get update \
-  && apt-get install -y build-essential python perl-modules
+# Copy scripts
+COPY scripts/*.sh /tmp/
+# Install tools, create Node-RED app and data dir, add user and set rights
+RUN set -ex && \
+    apt-get update && apt-get install -y \
+        bash \
+        tzdata \
+        curl \
+        nano \
+        wget \
+        git \
+        openssl \
+        openssh-client \
+        ca-certificates && \
+    mkdir -p /usr/src/node-red /data && \
+    deluser --remove-home node && \
+    # adduser --home /usr/src/node-red --disabled-password --no-create-home node-red --uid 1000 && \
+    useradd --home-dir /usr/src/node-red --uid 1000 node-red && \
+    chown -R node-red:root /data && chmod -R g+rwX /data && \
+    chown -R node-red:root /usr/src/node-red && chmod -R g+rwX /usr/src/node-red
+    # chown -R node-red:node-red /data && \
+    # chown -R node-red:node-red /usr/src/node-red
 
-RUN deluser --remove-home node \
-  && groupadd --gid 1000 nodered \
-  && useradd --gid nodered --uid 1000 --shell /bin/bash --create-home nodered
+# Set work directory
+WORKDIR /usr/src/node-red
 
-RUN mkdir -p /.node-red && chown 1000 /.node-red
+# package.json contains Node-RED NPM module and node dependencies
+COPY package.json .
+COPY flows.json /data
 
-USER 1000
-WORKDIR /.node-red
+#----------------------------------------------------------------- Stage BUILD ---------------------------------------------------------------------------------#
+FROM base AS build
 
-COPY ./package.json /.node-red/
-RUN npm install
+# Install Build tools
+RUN apt-get update && apt-get install -y build-essential python && \
+    npm install --unsafe-perm --no-update-notifier --no-fund --only=production && \
+    npm uninstall node-red-node-gpio && \
+    cp -R node_modules prod_node_modules
 
-## Release image
-FROM node:lts-slim
+# ---------------------------------------------------------------- Stage Release --------------------------------------------------------------------------------#
+FROM base AS RELEASE
+ARG BUILD_DATE
+ARG BUILD_VERSION
+ARG BUILD_REF
+ARG NODE_RED_VERSION
+ARG ARCH
+ARG TAG_SUFFIX=default
 
-RUN apt-get update && apt-get install -y perl-modules && rm -rf /var/lib/apt/lists/*
+LABEL org.label-schema.build-date=${BUILD_DATE} \
+    org.label-schema.license="Apache-2.0" \
+    org.label-schema.name="Node-RED" \
+    org.label-schema.version=${BUILD_VERSION} \
+    org.label-schema.description="Low-code programming for event-driven applications." \
+    org.label-schema.url="https://nodered.org" \
+    org.label-schema.vcs-ref=${BUILD_REF} \
+    org.label-schema.vcs-type="Git" \
+    org.label-schema.vcs-url="https://github.com/node-red/node-red-docker" \
+    org.label-schema.arch=${ARCH} \
+    authors="Dave Conway-Jones, Nick O'Leary, James Thomas, Raymond Mouthaan"
+    
+COPY --from=build /usr/src/node-red/prod_node_modules ./node_modules
 
-RUN deluser --remove-home node \
-  && groupadd --gid 1000 nodered \
-  && useradd --gid nodered --uid 1000 --shell /bin/bash --create-home nodered
+# Chown, install devtools & Clean up
+RUN chown -R node-red:root /usr/src/node-red && \
+    apt-get update && apt-get install -y build-essential python-dev python3 && \
+    rm -r /tmp/*
 
-RUN mkdir -p /.node-red && chown 1000 /.node-red
+USER node-red
 
-USER 1000
+# Env variables
+ENV NODE_RED_VERSION=$NODE_RED_VERSION \
+    NODE_PATH=/usr/src/node-red/node_modules:/data/node_modules \
+    PATH=/usr/src/node-red/node_modules/.bin:${PATH} \
+    FLOWS=flows.json
 
-COPY ./server.js /.node-red/
-COPY ./settings.js /.node-red/
-COPY ./flows.json /.node-red/
-COPY ./flows_cred.json /.node-red/
-COPY ./package.json /.node-red/
-COPY --from=build /.node-red/node_modules /.node-red/node_modules
+# ENV NODE_RED_ENABLE_SAFE_MODE=true    # Uncomment to enable safe start mode (flows not running)
+# ENV NODE_RED_ENABLE_PROJECTS=true     # Uncomment to enable projects option
 
-USER 0
-
-RUN chgrp -R 0 /.node-red \
-  && chmod -R g=u /.node-red
-
-USER 1000
-
-WORKDIR /.node-red
-
-RUN mkdir / .node-red/data
-
-ENV PORT 1880
-ENV NODE_ENV=production
-ENV NODE_PATH=/.node-red/node_modules
+# Expose the listening port of node-red
 EXPOSE 1880
 
-CMD ["node", "/.node-red/server.js", "/.node-red/flows.json"]
+# Add a healthcheck (default every 30 secs)
+# HEALTHCHECK CMD curl http://localhost:1880/ || exit 1
+
+ENTRYPOINT ["npm", "start", "--cache", "/data/.npm", "--", "--userDir", "/data"]
