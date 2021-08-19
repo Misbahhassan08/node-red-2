@@ -1,5 +1,5 @@
 #--------------------------------------------------------------------------- Stage Base ----------------------------------------------------------------#
-FROM node:12-alpine AS base
+FROM ubuntu AS base
 
 # Install tools, create Node-RED app and data dir, add user and set rights
 RUN apt-get update && apt-get install -y \
