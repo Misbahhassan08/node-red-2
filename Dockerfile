@@ -30,8 +30,13 @@ RUN set -ex && \
 WORKDIR /usr/src/node-red
 
 # package.json contains Node-RED NPM module and node dependencies
-COPY package.json .
 COPY flows.json /data
+COPY server.js /data
+COPY settings.js /data
+COPY flows.json /data
+COPY flows_cred.json /data
+COPY package.json /data
+
 
 #----------------------------------------------------------------- Stage BUILD ---------------------------------------------------------------------------------#
 FROM base AS build
@@ -86,5 +91,10 @@ EXPOSE 1880
 
 # Add a healthcheck (default every 30 secs)
 # HEALTHCHECK CMD curl http://localhost:1880/ || exit 1
+ENV PORT 1880
+ENV NODE_ENV=production
+ENV NODE_PATH=/.node-red/node_modules
+EXPOSE 1880
 
-ENTRYPOINT ["npm", "start", "--cache", "/data/.npm", "--", "--userDir", "/data"]
+CMD ["node", "/data/server.js", "/data/flows.json"]
+#ENTRYPOINT ["npm", "start", "--cache", "/data/.npm", "--", "--userDir", "/data"]
