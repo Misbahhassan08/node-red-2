@@ -2,8 +2,7 @@
 FROM node:12-alpine AS base
 
 # Install tools, create Node-RED app and data dir, add user and set rights
-RUN set -ex && \
-    apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y \
         bash \
         tzdata \
         curl \
