@@ -1,5 +1,5 @@
 #--------------------------------------------------------------------------- Stage Base ----------------------------------------------------------------#
-FROM ubuntu AS base
+FROM node:latest AS base
 
 # Install tools, create Node-RED app and data dir, add user and set rights
 RUN apt-get update && apt-get install -y \
