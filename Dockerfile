@@ -12,8 +12,9 @@ RUN set -ex && \
         git \
         openssl \
         openssh-client \
-        ca-certificates && \
-    mkdir -p /usr/src/node-red /data && \
+        ca-certificates 
+        
+RUN mkdir -p /usr/src/node-red /data && \
     deluser --remove-home node && \
     # adduser --home /usr/src/node-red --disabled-password --no-create-home node-red --uid 1000 && \
     useradd --home-dir /usr/src/node-red --uid 1000 node-red && \
